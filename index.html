@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Gerador de Código de Barras EAN-13</title>
+
+  <!-- Biblioteca JS para gerar código de barras EAN-13 -->
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  
+  <!-- Estilo da página -->
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 0;
+    }
+
+    input[type="text"] {
+      padding: 10px;
+      font-size: 18px;
+      width: 250px;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 18px;
+      margin: 10px 5px;
+      cursor: pointer;
+    }
+
+    /* Container da área de impressão com fundo bege suave e tamanho fixo */
+    #print-area {
+      background-color: #fdf6e3;
+      width: 9cm;
+      height: 3cm;
+      margin: 15px auto;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      border: 1px dashed #999;
+      border-radius: 8px;
+      box-sizing: border-box;
+    }
+
+    /* Estilo das etiquetas */
+    .etiqueta {
+      width: 4cm;
+      height: 2.5cm;
+      background-color: white;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 5px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .blocoResultado {
+      font-size: 10px;
+      white-space: pre-line;
+      text-align: left;
+      width: 100%;
+    }
+
+    svg {
+      margin-top: 2px;
+    }
+
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+
+      #print-area, #print-area * {
+        visibility: visible;
+      }
+
+      #print-area {
+        position: absolute;
+        top: 50px;
+        left: 0;
+        right: 0;
+        margin: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Título da página -->
+  <h1>Etiqueta Floricultura</h1>
+
+  <!-- Área de seleção -->
+  <div id="select-area" style="text-align: left; margin-left: 250px;">
+    <label>
+      <input type="radio" name="modo" value="ean" checked>
+      EAN
+    </label>
+    <label>
+      <input type="radio" name="modo" value="codigo">
+      Código
+    </label>
+  </div>
+
+  <!-- Área de formulário -->
+  <div id="form-area" style="text-align: left; margin-left: 250px;">
+    <!-- Campo de entrada para até 13 dígitos numéricos -->
+    <input type="text" id="codDigitado"
+           placeholder="Digite o código"
+           maxlength="13"
+           style="width: 250px; height: 25px"
+           inputmode="numeric"
+           pattern="\d{1,13}">
+
+    <input type="number"
+           id="quantidade"
+           value="1" min="1" max="99"
+           style="width: 60px; height: 42px; font-size: 20px;"
+           title="Quantidade de impressões">
+
+    <button type="button" onclick="buscar()">🔍</button>
+
+    <!-- Botão Imprimir -->
+    <button onclick="imprimir()"
+            style="width: 200px; height: 50px;"
+            accesskey="p">🖨️ Imprimir
+    </button>
+
+    <div id="printer-area" style="margin-left: 0px; text-align: left;">
+      <!-- Checkbox para ativar a lista -->
+      <label>
+        <input type="checkbox" id="adicionarLista" onchange="toggleLista()">
+        Adicionar etiquetas à uma lista
+      </label>
+      <!-- Seletor de Impressora -->
+      <select id="selectImpressora"
+              style="width: 200px; margin-left: 195px"
+              onchange="selecionarImpressora()">
+        <option value="">Selecione a Impressora</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Área que será impressa/exportada -->
+  <div id="print-area" style="text-align: left; margin-left: 250px;">
+    <!-- Primeira etiqueta -->
+    <div class="etiqueta">
+      <div class="blocoResultado" id="resultado1"></div>
+      <svg id="barcode1"></svg>
+    </div>
+
+    <!-- Segunda etiqueta -->
+    <div class="etiqueta">
+      <div class="blocoResultado" id="resultado2"></div>
+      <svg id="barcode2"></svg>
+    </div>
+  </div>
+
+  <!-- Listbox para exibir etiquetas acumuladas -->
+  <select id="listaEtiquetas"
+          multiple size="10"
+          style="display: none; width: 650px; margin-top: 10px; margin-left: 250px;">
+  </select>
+
+  <!-- Scripts da lógica -->
+  <script type="module">
+    import { buscarPorCodigo, buscarPorEan } from './Controller/BuscarporCodigo.js';
+    import { getImpressoras } from './Controller/getImpressoras.js';
+    import { imprimir } from './Controller/Imprimir.js';
+    import { imprimirLista } from './Controller/ImprimirLista.js';
+    import { gerarZplEtiqueta } from './Controller/geradorZpl.js';
+
+    // 🔄 Foco automático ao carregar
+    window.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("codDigitado").focus();
+      loadImpressoras();
+    });
+
+    // 🔧 Busca ao pressionar Enter
+    document.getElementById("codDigitado").addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        e.preventDefault(); buscar();
+      }
+    });
+
+    const campoCodigo = document.getElementById("codDigitado");
+    const campoQuantidade = document.getElementById("quantidade");
+    const botaoImprimir = document.querySelector('button[accesskey="p"]');
+
+    campoCodigo.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        e.preventDefault(); campoQuantidade.focus();
+      }
+    });
+    campoQuantidade.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        e.preventDefault(); botaoImprimir.focus();
+      }
+    });
+    botaoImprimir.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        e.preventDefault(); campoCodigo.focus();
+      }
+    });
+
+    let ipImpressoraSelecionada = "";
+
+    // 🔍 Função buscar()
+    async function buscar() {
+      const codigo = document.getElementById("codDigitado").value.trim();
+      const modo = document.querySelector('input[name="modo"]:checked').value;
+      let resultado;
+
+      if (modo === "ean") {
+        resultado = await buscarPorEan(codigo);
+      } else {
+        resultado = await buscarPorCodigo(codigo);
+      }
+
+      if (!resultado || resultado.includes("inválido") || resultado.includes("Não encontrado")) {
+        return alert(resultado);
+      }
+
+      const [nome, codigoInterno, ean] = resultado.split("||");
+      const texto = `${nome}\n${codigoInterno}`;
+      window.eanAtual = ean;
+
+      document.querySelectorAll(".blocoResultado").forEach((el, idx) => {
+        el.textContent = texto;
+      });
+      JsBarcode("#barcode1", ean, { format: "ean13", displayValue: true, width: 1.3, height: 30 });
+      JsBarcode("#barcode2", ean, { format: "ean13", displayValue: true, width: 1.3, height: 30 });
+      document.querySelectorAll("svg").forEach(svg => svg.dataset.barcode = ean);
+
+      const qtd = parseInt(campoQuantidade.value) || 1;
+      adicionarEtiquetaNaLista(nome, codigoInterno, ean, qtd);
+    }
+
+    // 🖨️ Função imprimir()
+    async function imprimir() {
+      if (document.getElementById("adicionarLista").checked) {
+        return imprimirListaHandler();
+      }
+
+      const ean = window.eanAtual;
+      const texto = document.getElementById("resultado1").textContent.trim();
+      const qtd = parseInt(campoQuantidade.value) || 1;
+
+      if (!ean || !texto) return alert("Realize uma busca antes de imprimir!");
+      if (!ipImpressoraSelecionada) return alert("Selecione uma impressora!");
+
+      try {
+        const zpl = await gerarZplEtiqueta({ ean13: ean, texto, quantidade: qtd });
+        const msg = await imprimir({ zpl, ip: ipImpressoraSelecionada });
+        alert(msg);
+      } catch (err) {
+        console.error(err);
+        alert("Erro: " + err.message);
+      }
+    }
+
+    function adicionarEtiquetaNaLista(nome, codigoInterno, ean, quantidade) {
+      if (!document.getElementById("adicionarLista").checked) return;
+      const opt = document.createElement("option");
+      opt.value = JSON.stringify({ nome, codigoInterno, ean, quantidade });
+      opt.text = `${quantidade}x | ${nome} | ${codigoInterno} | ${ean}`;
+      document.getElementById("listaEtiquetas").appendChild(opt);
+    }
+
+    function toggleLista() {
+      const sel = document.getElementById("listaEtiquetas");
+      sel.style.display = sel.style.display === "none" ? "block" : "none";
+    }
+
+    async function imprimirListaHandler() {
+      try {
+        const sel = document.getElementById("listaEtiquetas");
+        const lista = Array.from(sel.options).map(o => JSON.parse(o.value));
+        if (lista.length === 0) return alert("Nenhuma etiqueta na lista!");
+        if (!ipImpressoraSelecionada) return alert("Selecione uma impressora!");
+
+        const msg = await imprimirLista({ lista, ip: ipImpressoraSelecionada });
+        alert(msg);
+        sel.innerHTML = "";
+      } catch (err) {
+        console.error(err);
+        alert("Erro lista: " + err.message);
+      }
+    }
+
+    async function loadImpressoras() {
+      try {
+        const lista = await getImpressoras();
+        const sel = document.getElementById("selectImpressora");
+        lista.forEach(p => sel.add(new Option(p.nome, p.ip)));
+      } catch (err) {
+        console.error(err);
+        alert("Falha ao carregar impressoras: " + err.message);
+      }
+    }
+
+    function selecionarImpressora() {
+      ipImpressoraSelecionada = document.getElementById("selectImpressora").value;
+      if (!ipImpressoraSelecionada) alert("Por favor, selecione uma impressora.");
+    }
+  </script>
+</body>
+</html>

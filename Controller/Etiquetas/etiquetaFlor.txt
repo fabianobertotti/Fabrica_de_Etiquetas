@@ -1,0 +1,12 @@
+^XA
+^CF0,20
+^FO120,30^FD{{linha1}}^FS
+^FO120,55^FD{{linha2}}^FS
+^FO460,30^FD{{linha1}}^FS
+^FO460,55^FD{{linha2}}^FS
+^BY2,2,50
+^FO120,80^BE,,Y,N
+^FD{{ean13}}^FS
+^FO460,80^BE,,Y,N
+^FD{{ean13}}^FS
+^XZ
